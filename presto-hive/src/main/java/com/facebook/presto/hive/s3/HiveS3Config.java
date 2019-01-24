@@ -56,6 +56,58 @@ public class HiveS3Config
     private DataSize s3MultipartMinPartSize = new DataSize(5, MEGABYTE);
     private boolean pinS3ClientToCurrentRegion;
     private String s3UserAgentPrefix = "";
+    private String alluxioFrom;
+    private String alluxioTo;
+    private String alluxioMaster;
+    private int maxtRpcDurationMs = 20;
+
+    public int getMaxRpcDurationMs()
+    {
+        return maxtRpcDurationMs;
+    }
+
+    @Config(S3ConfigurationUpdater.ALLUXIO_RPC_MASTER_RETRY_DURATION_MS)
+    public HiveS3Config setMaxRpcDurationMs(int maxRpcDurationMs)
+    {
+        this.maxtRpcDurationMs = maxRpcDurationMs;
+        return this;
+    }
+
+    public String getAlluxioMaster()
+    {
+        return alluxioMaster;
+    }
+
+    @Config(S3ConfigurationUpdater.ALLUXIO_MASTER_ADDRESS)
+    public HiveS3Config setAlluxioMaster(String alluxioMaster)
+    {
+        this.alluxioMaster = alluxioMaster;
+        return this;
+    }
+
+    public String getAlluxioTo()
+    {
+        return alluxioTo;
+    }
+
+    @Config("presto.alluxio.mount.to")
+    public HiveS3Config setAlluxioTo(String alluxioTo)
+    {
+        this.alluxioTo = alluxioTo;
+        return this;
+    }
+
+    public String getAlluxioFrom()
+    {
+        return alluxioFrom;
+    }
+
+    @Config("presto.alluxio.mount.from")
+    public HiveS3Config setAlluxioFrom(String alluxioFrom)
+    {
+        this.alluxioFrom = alluxioFrom;
+        return this;
+    }
 
     public String getS3AwsAccessKey()
     {

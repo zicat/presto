@@ -48,6 +48,10 @@ public class PrestoS3ConfigurationUpdater
     private final File stagingDirectory;
     private final boolean pinClientToCurrentRegion;
     private final String userAgentPrefix;
+    private final String alluxioFrom;
+    private final String alluxioTo;
+    private final String alluxioMaster;
+    private final int maxRpcRetryDurationMs;
 
     @Inject
     public PrestoS3ConfigurationUpdater(HiveS3Config config)
@@ -76,6 +80,10 @@ public class PrestoS3ConfigurationUpdater
         this.stagingDirectory = config.getS3StagingDirectory();
         this.pinClientToCurrentRegion = config.isPinS3ClientToCurrentRegion();
         this.userAgentPrefix = config.getS3UserAgentPrefix();
+        this.alluxioFrom = config.getAlluxioFrom();
+        this.alluxioTo = config.getAlluxioTo();
+        this.alluxioMaster = config.getAlluxioMaster();
+        this.maxRpcRetryDurationMs = config.getMaxRpcDurationMs();
     }
 
     @Override
@@ -124,5 +132,9 @@ public class PrestoS3ConfigurationUpdater
         config.setLong(S3_MULTIPART_MIN_PART_SIZE, multipartMinPartSize.toBytes());
         config.setBoolean(S3_PIN_CLIENT_TO_CURRENT_REGION, pinClientToCurrentRegion);
         config.set(S3_USER_AGENT_PREFIX, userAgentPrefix);
+        config.set(ALLUXIO_KEY_MOUNT_FROM, alluxioFrom);
+        config.set(ALLUXIO_KEY_MOUNT_TO, alluxioTo);
+        config.set(ALLUXIO_MASTER_ADDRESS, alluxioMaster);
+        config.setInt(ALLUXIO_RPC_MASTER_RETRY_DURATION_MS, maxRpcRetryDurationMs);
     }
 }

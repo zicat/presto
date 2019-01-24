@@ -43,6 +43,9 @@ public interface S3ConfigurationUpdater
     String S3_ENDPOINT = "presto.s3.endpoint";
     String S3_SECRET_KEY = "presto.s3.secret-key";
     String S3_ACCESS_KEY = "presto.s3.access-key";
-
+    String ALLUXIO_KEY_MOUNT_FROM = "presto.alluxio.mount.from";
+    String ALLUXIO_KEY_MOUNT_TO = "presto.alluxio.mount.to";
+    String ALLUXIO_MASTER_ADDRESS = "presto.alluxio.master";
+    String ALLUXIO_RPC_MASTER_RETRY_DURATION_MS = "presto.alluxio.user.retry.duration.ms";
     void updateConfiguration(Configuration config);
 }

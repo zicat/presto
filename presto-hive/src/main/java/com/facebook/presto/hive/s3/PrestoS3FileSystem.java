@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.hive.s3;
 
+import alluxio.PropertyKey;
+import alluxio.client.block.policy.DeterministicHashPolicy;
+import alluxio.conf.Source;
 import com.amazonaws.AbortedException;
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.ClientConfiguration;
@@ -91,6 +94,10 @@ import static com.amazonaws.regions.Regions.US_EAST_1;
 import static com.amazonaws.services.s3.Headers.SERVER_SIDE_ENCRYPTION;
 import static com.amazonaws.services.s3.Headers.UNENCRYPTED_CONTENT_LENGTH;
 import static com.facebook.presto.hive.RetryDriver.retry;
+import static com.facebook.presto.hive.s3.S3ConfigurationUpdater.ALLUXIO_KEY_MOUNT_FROM;
+import static com.facebook.presto.hive.s3.S3ConfigurationUpdater.ALLUXIO_KEY_MOUNT_TO;
+import static com.facebook.presto.hive.s3.S3ConfigurationUpdater.ALLUXIO_MASTER_ADDRESS;
+import static com.facebook.presto.hive.s3.S3ConfigurationUpdater.ALLUXIO_RPC_MASTER_RETRY_DURATION_MS;
 import static com.facebook.presto.hive.s3.S3ConfigurationUpdater.S3_ACCESS_KEY;
 import static com.facebook.presto.hive.s3.S3ConfigurationUpdater.S3_CONNECT_TIMEOUT;
 import static com.facebook.presto.hive.s3.S3ConfigurationUpdater.S3_CREDENTIALS_PROVIDER;
@@ -166,8 +173,45 @@ public class PrestoS3FileSystem
     private long multiPartUploadMinFileSize;
     private long multiPartUploadMinPartSize;
 
+    // aluxio configuration
+    private String mountFrom;
+    private String mountTo;
+    private int maxRpcRetryDurationMs;
+    private alluxio.client.file.FileSystem fs;
+    private String master;
+
     @Override
     public void initialize(URI uri, Configuration conf)
+            throws IOException
+    {
+        s3Initialize(uri, conf);
+        alluxioInitialize(conf);
+    }
+
+    /**
+      *
+      * @throws IOException
+      */
+    private void alluxioInitialize(Configuration conf)
+    {
+        mountFrom = conf.get(ALLUXIO_KEY_MOUNT_FROM);
+        mountTo = conf.get(ALLUXIO_KEY_MOUNT_TO);
+        master = conf.get(ALLUXIO_MASTER_ADDRESS);
+        maxRpcRetryDurationMs = conf.getInt(ALLUXIO_RPC_MASTER_RETRY_DURATION_MS, 20);
+        if (!master.equalsIgnoreCase("INVALID")) {
+            alluxio.Configuration.set(PropertyKey.MASTER_HOSTNAME, master, Source.CLUSTER_DEFAULT);
+            alluxio.Configuration.set(PropertyKey.USER_UFS_BLOCK_READ_LOCATION_POLICY, DeterministicHashPolicy.class.getName());
+            alluxio.Configuration.set(PropertyKey.USER_RPC_RETRY_MAX_DURATION, maxRpcRetryDurationMs, Source.DEFAULT);
+            fs = alluxio.client.file.FileSystem.Factory.get();
+        }
+    }
+
+  /**
+   * @param uri
+   * @param conf
+   * @throws IOException
+   */
+    public void s3Initialize(URI uri, Configuration conf)
             throws IOException
     {
         requireNonNull(uri, "uri is null");
@@ -193,8 +237,7 @@ public class PrestoS3FileSystem
         this.isPathStyleAccess = conf.getBoolean(S3_PATH_STYLE_ACCESS, defaults.isS3PathStyleAccess());
         this.useInstanceCredentials = conf.getBoolean(S3_USE_INSTANCE_CREDENTIALS, defaults.isS3UseInstanceCredentials());
         this.pinS3ClientToCurrentRegion = conf.getBoolean(S3_PIN_CLIENT_TO_CURRENT_REGION, defaults.isPinS3ClientToCurrentRegion());
-        verify((pinS3ClientToCurrentRegion && conf.get(S3_ENDPOINT) == null) || !pinS3ClientToCurrentRegion,
-                "Invalid configuration: either endpoint can be set or S3 client can be pinned to the current region");
+        verify((pinS3ClientToCurrentRegion && conf.get(S3_ENDPOINT) == null) || !pinS3ClientToCurrentRegion, "Invalid configuration: either endpoint can be set or S3 client can be pinned to the current region");
         this.sseEnabled = conf.getBoolean(S3_SSE_ENABLED, defaults.isS3SseEnabled());
         this.sseType = PrestoS3SseType.valueOf(conf.get(S3_SSE_TYPE, defaults.getS3SseType().name()));
         this.sseKmsKeyId = conf.get(S3_SSE_KMS_KEY_ID, defaults.getS3SseKmsKeyId());
@@ -335,11 +378,54 @@ public class PrestoS3FileSystem
     @Override
     public FSDataInputStream open(Path path, int bufferSize)
     {
+        if (fs != null) {
+            try {
+                Path newPath = new Path(path.toString().replace(mountFrom, mountTo));
+                if (!newPath.equals(path)) {
+                    log.debug("alluxio path = " + path);
+                    return new FSDataInputStream(
+                        new BufferedFSInputStream(
+                            new PrestoS3AlluxioInputStream(fs, newPath.toUri()), bufferSize));
+                }
+            }
+            catch (Exception e) {
+                log.error(e, "create alluxio error");
+            }
+        }
         return new FSDataInputStream(
                 new BufferedFSInputStream(
                         new PrestoS3InputStream(s3, getBucketName(uri), path, maxAttempts, maxBackoffTime, maxRetryTime),
                         bufferSize));
     }
+
+//    @Override
+//    public FSDataInputStream open(Path path, int bufferSize)
+//    {
+//        return new FSDataInputStream(
+//            new BufferedFSInputStream(
+//                new PrestoS3InputStream(s3, getBucketName(uri), path, maxAttempts, maxBackoffTime, maxRetryTime),
+//                        bufferSize));
+//    }
+
+//    @Override
+//    public FSDataInputStream open(Path path, int bufferSize)
+//    {
+//        try {
+//            Path newPath = new Path(path.toString().replace("s3://dev-warehouse", "alluxio://s3-dev-warehouse"));
+//            if (!newPath.equals(path)) {
+//                return new FSDataInputStream(
+//                    new BufferedFSInputStream(
+//                        new PrestoS3AlluxioInputStream(newPath.toUri()), bufferSize));
+//            }
+//        }
+//        catch (Exception e) {
+//            log.warn(e, "use alluxio error");
+//        }
+//        return new FSDataInputStream(
+//                new BufferedFSInputStream(
+//                        new PrestoS3InputStream(s3, getBucketName(uri), path, maxAttempts, maxBackoffTime, maxRetryTime),
+//                        bufferSize));
+//    }
 
     @Override
     public FSDataOutputStream create(Path path, FsPermission permission, boolean overwrite, int bufferSize, short replication, long blockSize, Progressable progress)
